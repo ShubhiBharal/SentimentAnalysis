@@ -1,0 +1,258 @@
+import pandas
+import scipy
+import numpy as np
+import pickle
+import matplotlib.pyplot as plt
+import scikitplot as skplt
+
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.neural_network import MLPClassifier
+from sklearn import tree
+from sklearn import linear_model
+from sklearn.model_selection import cross_val_score
+from sklearn.ensemble import VotingClassifier
+from sklearn.externals import joblib
+from sklearn.pipeline import Pipeline
+from sklearn import metrics
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import average_precision_score
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import roc_curve
+
+dataframe = pandas.read_csv("reviews.csv", sep='|')
+dataframe["label"] = dataframe["label"].map({"negative":0,"positive":1})
+
+dataframe.index = range(1,len(dataframe)+1)
+test = dataframe[dataframe.index % 5 == 0]
+train = dataframe[dataframe.index % 5 != 0]
+pos = dataframe[dataframe.label == 1]
+neg = dataframe[dataframe.label == 0]
+pos_test = pos.text
+pos['length'] = pos['text'].apply(len)
+neg_test = neg.text
+neg['length'] = neg['text'].apply(len)
+print("Length of positive reviews",pos['length'].sum())
+print("Average length of a positive review",(pos['length'].sum()/len(pos)))
+print("Length of negative reviews",neg['length'].sum())
+print("Average length of a negative review",neg['length'].sum()/len(neg))
+#print("Length of positive reviews",str(pos_test))
+#print("Length of negative reviews",str(neg_test))
+X_train = train.text
+y_train = train.label
+X_test = test.text
+y_test = test.label
+#print(X_test)
+#print(X_train)
+outfile = open("words.txt",'w')
+pos_count_file = open("pos_count.txt",'w')
+neg_count_file = open("neg_count.txt",'w')
+neg_count_for_pos = open("neg_count_for_pos.txt",'w')
+pos_count_for_neg = open("pos_count_for_neg.txt",'w')
+count_vect = CountVectorizer()
+
+pos_count = count_vect.fit_transform(pos_test)
+pos_count.shape
+pos_dict = count_vect.vocabulary_
+list_pos = ['good','wonderful','great','nice','loved','useful','excellent','Great','best','amazing']
+list_neg = ['incorrect','disappointed','crap','cheap','defective','disappointing','useless','waste','bad','unhappy']
+myposDict = {key:val for key, val in pos_dict.items() if key in list_pos}
+negforpos = {key:val for key, val in pos_dict.items() if key in list_neg}
+pos_count_file.write(str(myposDict))
+neg_count_for_pos.write(str(negforpos))
+
+neg_count = count_vect.fit_transform(neg_test)
+neg_count.shape
+neg_dict = count_vect.vocabulary_
+mynegDict = {key:val for key, val in neg_dict.items() if key in list_neg}
+posforneg = {key:val for key, val in neg_dict.items() if key in list_pos}
+
+neg_count_file.write(str(mynegDict))
+pos_count_for_neg.write(str(posforneg))
+
+
+X_train_counts = count_vect.fit_transform(X_train)
+X_train_counts.shape
+print(X_train_counts.shape)
+outfile.write(str(count_vect.vocabulary_))
+outfile.close()
+pos_count_file.close()
+neg_count_file.close()
+neg_count_for_pos.close()
+pos_count_for_neg.close()
+pickle.dump(count_vect.vocabulary_,open("feature.pkl","wb"))
+
+tf_transformer = TfidfTransformer(use_idf=False).fit(X_train_counts)
+X_train_tf = tf_transformer.transform(X_train_counts)
+print(X_train_tf.shape)
+
+tfidf_transformer = TfidfTransformer()
+X_train_tfidf = tfidf_transformer.fit_transform(X_train_counts)
+print(X_train_tfidf.shape)
+
+X_new_counts = count_vect.transform(X_test)
+X_new_tfidf = tfidf_transformer.transform(X_new_counts)
+print(X_new_tfidf.shape)
+
+#clf = MultinomialNB().fit(X_train_tfidf, y_train)
+#predicted = clf.predict(X_new_tfidf)
+
+#for act_res, pre_res in zip(y_test,predicted):
+  #  print('%r => %s' % (act_res, pre_res))
+
+#print(np.mean(predicted == y_test))
+#y_predict = predicted
+#y_true = y_test
+#fpr, tpr, threshold = metrics.roc_curve(y_test, y_predict)
+#roc_auc = metrics.auc(fpr, tpr)
+#plt.title('Receiver Operating Characteristic')
+#plt.plot(fpr, tpr, 'b', label = 'AUC for NaiveBayes = %0.2f' % roc_auc)
+
+
+
+
+clf1 = MLPClassifier(solver ='lbfgs', alpha = 1e-5, hidden_layer_sizes=(5,2), random_state=1)
+clf1.fit(X_train_tfidf, y_train)
+predictedNN = clf1.predict(X_new_tfidf)
+
+print("Predictive Accuracy for Neural Network ",np.mean(predictedNN == y_test))
+
+y_predict = predictedNN
+y_true = y_test
+#for act_res, pre_res in zip(y_test,predictedNN):
+    #print('%r => %s' % (act_res, pre_res))
+
+
+print("Precision for Neural Networks ",metrics.precision_score(y_true, y_predict))
+print("Recall for Neural Networks",metrics.recall_score(y_true, y_predict))
+pickle.dump(clf1,open("my_classifier.pkl","wb"))
+
+average_precision = average_precision_score(y_true, y_predict)
+
+print('Average precision-recall score for Neural Networks: {0:0.2f}'.format(
+      average_precision))
+
+print("Accuracy Score for Neural Networks",accuracy_score(y_true, y_predict))
+
+precision, recall, _ = precision_recall_curve(y_true, y_predict)
+
+#plt.step(recall, precision, color='b', alpha=0.2,where='post')
+#plt.fill_between(recall, precision, step='post', alpha=0.2,color='b')
+
+#plt.xlabel('Recall')
+#plt.ylabel('Precision')
+#plt.ylim([0.0, 1.05])
+#plt.xlim([0.0, 1.0])
+#plt.title('2-class Precision-Recall curve for Neural Network: AP={0:0.2f}'.format(average_precision))
+#plt.savefig('PR_NN.png')
+
+
+
+
+
+
+
+
+
+
+fpr, tpr, threshold = metrics.roc_curve(y_test, y_predict)
+roc_auc = metrics.auc(fpr, tpr)
+#plt.title('Receiver Operating Characteristic')
+#plt.plot(fpr, tpr, 'g', label = 'AUC for Neural Networks = %0.2f' % roc_auc)
+
+
+clf2 = tree.DecisionTreeClassifier(max_depth=15)
+clf2 = clf2.fit(X_train_tfidf, y_train)
+predictDT = clf2.predict(X_new_tfidf)
+print("Predictive accuracy for Decision Tree is",np.mean(predictDT == y_test))
+
+y_predict = predictDT
+y_true = y_test
+fpr, tpr, threshold = metrics.roc_curve(y_test, y_predict)
+roc_auc = metrics.auc(fpr, tpr)
+#plt.title('Receiver Operating Characteristic')
+#plt.plot(fpr, tpr, 'b', label = 'AUC for Decision Tree = %0.2f' % roc_auc)
+
+print("Precision for Decision Tree ",metrics.precision_score(y_true, y_predict))
+print("Recall for Decision Tree",metrics.recall_score(y_true, y_predict))
+#pickle.dump(clf1,open("Decision_Tree.pkl","wb"))
+
+average_precision = average_precision_score(y_true, y_predict)
+
+print('Average precision-recall score for Decision Tree: {0:0.2f}'.format(
+      average_precision))
+
+print("Accuracy Score for Decision Tree",accuracy_score(y_true, y_predict))
+
+precision, recall, _ = precision_recall_curve(y_true, y_predict)
+
+plt.step(recall, precision, color='b', alpha=0.2,where='post')
+plt.fill_between(recall, precision, step='post', alpha=0.2,color='b')
+
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.ylim([0.0, 1.05])
+plt.xlim([0.0, 1.0])
+plt.title('2-class Precision-Recall curve for Decision Tree: AP={0:0.2f}'.format(average_precision))
+plt.savefig('PR_DT.png')
+
+
+
+
+
+#for act_res, pre_res in zip(y_test,predictDT):
+ #   print('%r => %s' % (act_res, pre_res))
+
+clf3 = linear_model.SGDClassifier()
+clf3.fit(X_train_tfidf, y_train)
+predictSGD = clf3.predict(X_new_tfidf)
+
+eclf = VotingClassifier(estimators=[('NN', clf1), ('SGD', clf3)], voting='hard')
+eclf.fit(X_train_tfidf, y_train)
+predictEL  = eclf.predict(X_new_tfidf)
+
+
+print("Predictive accuracy for Ensemble Learning ",np.mean(predictEL == y_test))
+print("Predictive accuracy for SGD Classifier ",np.mean(predictSGD == y_test))
+y_predict = predictEL
+y_true = y_test
+fpr, tpr, threshold = metrics.roc_curve(y_test, y_predict)
+roc_auc = metrics.auc(fpr, tpr)
+#plt.title('Receiver Operating Characteristic')
+#plt.plot(fpr, tpr, 'b', label = 'AUC for Ensemble Learning = %0.2f' % roc_auc)
+#plt.legend(loc = 'lower right')
+#plt.plot([0, 1], [0, 1],'r--')
+#plt.xlim([0, 1])
+#plt.ylim([0, 1])
+#plt.ylabel('True Positive Rate')
+#plt.xlabel('False Positive Rate')
+#plt.savefig('roc_curve.png')
+
+#for clf, label in zip([clf1, clf3, eclf], ['Neural Network', 'SGD', 'Ensemble']):
+#   scores = cross_val_score(clf, X_test, y_test, cv=5, scoring='accuracy')
+#   print("Accuracy: %0.2f (+/- %0.2f) [%s]" % (scores.mean(), scores.std(), label))
+
+print("Precision for Ensemble Learing ",metrics.precision_score(y_true, y_predict))
+print("Recall for Ensemble Learning",metrics.recall_score(y_true, y_predict))
+#pickle.dump(clf1,open("my_classifier.pkl","wb"))
+
+average_precision = average_precision_score(y_true, y_predict)
+
+print('Average precision-recall score for Ensemble Learning: {0:0.2f}'.format(
+      average_precision))
+
+print("Accuracy Score for Ensemble Learning",accuracy_score(y_true, y_predict))
+
+precision, recall, _ = precision_recall_curve(y_true, y_predict)
+
+#plt.step(recall, precision, color='b', alpha=0.2,where='post')
+#plt.fill_between(recall, precision, step='post', alpha=0.2,color='b')
+
+#plt.xlabel('Recall')
+#plt.ylabel('Precision')
+#plt.ylim([0.0, 1.05])
+#plt.xlim([0.0, 1.0])
+#plt.title('2-class Precision-Recall curve for Ensemble Learning: AP={0:0.2f}'.format(average_precision))
+#plt.savefig('PR_EL.png')
+
